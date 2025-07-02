@@ -11,7 +11,6 @@ import Students from './pages/Students';
 import Settings from './pages/Settings';
 import AdminManagement from './pages/AdminManagement';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
-import { SyncService } from './utils/sync';
 import { useTheme } from './hooks/useTheme';
 import { APIService } from './utils/api';
 
@@ -47,10 +46,6 @@ function App() {
     };
 
     checkExistingSession();
-
-    // Initialize sync service
-    SyncService.initialize();
-    SyncService.scheduleBackgroundSync();
 
     // Apply theme to document
     const root = document.documentElement;
