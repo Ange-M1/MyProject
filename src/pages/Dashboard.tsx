@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, BookOpen, AlertTriangle, TrendingUp, Calendar, ClipboardList, FileText, ArrowRight,CheckCircle } from 'lucide-react';
+import { Users, BookOpen, AlertTriangle, TrendingUp, Calendar, ClipboardList, FileText, ArrowRight, CheckCircle, RefreshCw } from 'lucide-react';
 import { APIService } from '../utils/api';
 import { LocalDBService } from '../utils/localdb';
 import type { DashboardStats, FieldStats, TopAbsenteeField } from '../types';
@@ -31,49 +31,143 @@ export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const loadDashboardStats = async () => {
-  try {
-    setLoading(true);
-    setError(null);
-    const dashboardData = await APIService.getDashboardStats();
-    setStats(dashboardData);
-    LocalDBService.cacheData('rollcall_cached_dashboard', dashboardData);
-  } catch (error) {
-    console.error('Failed to load dashboard stats:', error);
-    setError('Failed to load dashboard statistics. Please check the server logs.');
-  } finally {
-    setLoading(false);
-  }
-};
+    try {
+      setLoading(true);
+      setError(null);
+      
+      console.log('Loading dashboard stats...');
+      
+      let dashboardData;
+      try {
+        dashboardData = await APIService.getDashboardStats();
+        console.log('API dashboard data:', dashboardData);
+      } catch (apiError) {
+        console.log('API failed, generating stats from local data...');
+        dashboardData = await generateStatsFromLocalData();
+      }
+      
+      setStats(dashboardData);
+      LocalDBService.cacheData('rollcall_cached_dashboard', dashboardData);
+    } catch (error) {
+      console.error('Failed to load dashboard stats:', error);
+      setError('Failed to load dashboard statistics. Using local data if available.');
+      
+      // Try to load from cache as fallback
+      const cachedData = LocalDBService.getCachedData('rollcall_cached_dashboard');
+      if (cachedData) {
+        setStats(cachedData);
+      } else {
+        // Generate basic stats from local data
+        const localStats = await generateStatsFromLocalData();
+        setStats(localStats);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generateStatsFromLocalData = async () => {
+    try {
+      console.log('Generating stats from local data...');
+      
+      // Get local data
+      const students = await APIService.getStudents();
+      const fields = await APIService.getFields();
+      const absenteeRecords = LocalDBService.getCachedData('rollcall_absentee_records') || [];
+      
+      console.log('Local data:', { students: students.length, fields: fields.length, absentees: absenteeRecords.length });
+
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+      const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+      // Calculate absentees by time period
+      const todayAbsentees = absenteeRecords.filter(record => 
+        record.date.split('T')[0] === todayStr
+      ).length;
+
+      const weeklyAbsentees = absenteeRecords.filter(record => 
+        new Date(record.date) >= weekAgo
+      ).length;
+
+      const monthlyAbsentees = absenteeRecords.filter(record => 
+        new Date(record.date) >= monthAgo
+      ).length;
+
+      // Calculate field stats
+      const fieldStats: FieldStats[] = fields.map(field => {
+        const fieldStudents = students.filter(student => student.field === field.name);
+        const fieldAbsentees = absenteeRecords.filter(record => 
+          record.fieldName === field.name && record.date.split('T')[0] === todayStr
+        );
+        
+        const totalStudents = fieldStudents.length;
+        const absentToday = fieldAbsentees.length;
+        const presentToday = Math.max(0, totalStudents - absentToday);
+        const attendanceRate = totalStudents > 0 ? ((presentToday / totalStudents) * 100) : 100;
+
+        return {
+          fieldId: field.id,
+          fieldName: field.name,
+          totalStudents,
+          presentToday,
+          absentToday,
+          attendanceRate: Math.round(attendanceRate * 100) / 100
+        };
+      });
+
+      // Calculate top absentee fields
+      const topAbsenteeFields: TopAbsenteeField[] = fieldStats
+        .filter(field => field.totalStudents > 0)
+        .map(field => ({
+          fieldName: field.fieldName,
+          absenteeCount: field.absentToday,
+          totalStudents: field.totalStudents,
+          absenteeRate: field.totalStudents > 0 ? (field.absentToday / field.totalStudents) * 100 : 0
+        }))
+        .sort((a, b) => b.absenteeRate - a.absenteeRate)
+        .slice(0, 5);
+
+      const dashboardStats: DashboardStats = {
+        totalStudents: students.length,
+        totalFields: fields.length,
+        todayAbsentees,
+        weeklyAbsentees,
+        monthlyAbsentees,
+        fieldStats,
+        topAbsenteeFields
+      };
+
+      console.log('Generated dashboard stats:', dashboardStats);
+      return dashboardStats;
+    } catch (error) {
+      console.error('Failed to generate stats from local data:', error);
+      // Return default stats
+      return {
+        totalStudents: 0,
+        totalFields: 0,
+        todayAbsentees: 0,
+        weeklyAbsentees: 0,
+        monthlyAbsentees: 0,
+        fieldStats: [],
+        topAbsenteeFields: []
+      };
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadDashboardStats();
+    setRefreshing(false);
+  };
 
   useEffect(() => {
     loadDashboardStats();
   }, []);
-
-
-
-
-
-  /* const loadDashboardStats = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const dashboardData = await APIService.getDashboardStats();
-      setStats(dashboardData);
-      
-      // Cache the data
-      LocalDBService.cacheData('rollcall_cached_dashboard', dashboardData);
-
-    } catch (error) {
-      console.error('Failed to load dashboard stats:', error);
-      setError('Failed to load dashboard statistics.');
-    } finally {
-      setLoading(false);
-    }
-    
-  }; */
 
   if (loading) {
     return (
@@ -86,7 +180,7 @@ export default function Dashboard() {
     );
   }
 
-  if (error || !stats) {
+  if (error && !stats) {
     return (
       <div className="text-center py-12">
         <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
@@ -102,6 +196,20 @@ export default function Dashboard() {
         >
           Try Again
         </button>
+      </div>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <div className="text-center py-12">
+        <AlertTriangle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+          No Data Available
+        </h2>
+        <p className="text-gray-500 dark:text-gray-400">
+          No dashboard data is currently available.
+        </p>
       </div>
     );
   }
@@ -235,13 +343,36 @@ export default function Dashboard() {
     <div className="space-y-8">
       {/* Header */}
       <div className="bg-gradient-to-r from-red-500 to-red-800 rounded-2xl p-8 text-white">
-        <h1 className="text-3xl font-bold mb-2">
-          Welcome to IME Rollcall Manager
-        </h1>
-        <p className="text-blue-100 text-lg">
-          Monitor attendance, manage students, and track performance across all fields
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">
+              Welcome to IME Rollcall Manager
+            </h1>
+            <p className="text-blue-100 text-lg">
+              Monitor attendance, manage students, and track performance across all fields
+            </p>
+          </div>
+          
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center space-x-2 px-4 py-2 bg-white bg-opacity-20 hover:bg-opacity-30 rounded-lg transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            <span>{refreshing ? 'Refreshing...' : 'Refresh'}</span>
+          </button>
+        </div>
       </div>
+
+      {/* Error Message */}
+      {error && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex items-center">
+            <AlertTriangle className="w-5 h-5 text-yellow-600 mr-3" />
+            <p className="text-yellow-800">{error}</p>
+          </div>
+        </div>
+      )}
 
       {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
@@ -355,24 +486,26 @@ export default function Dashboard() {
       </div>
 
       {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Field Performance Chart */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
-          <div className="h-80">
-            <Bar data={fieldPerformanceData} options={chartOptions} />
+      {stats.fieldStats.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Field Performance Chart */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+            <div className="h-80">
+              <Bar data={fieldPerformanceData} options={chartOptions} />
+            </div>
           </div>
-        </div>
 
-        {/* Attendance Overview */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 text-center">
-            Today's Attendance Overview
-          </h3>
-          <div className="h-80">
-            <Doughnut data={attendanceOverviewData} options={doughnutOptions} />
+          {/* Attendance Overview */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 text-center">
+              Today's Attendance Overview
+            </h3>
+            <div className="h-80">
+              <Doughnut data={attendanceOverviewData} options={doughnutOptions} />
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Fields Requiring Attention */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg">

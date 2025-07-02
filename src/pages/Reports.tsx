@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Filter, Calendar, Users, BookOpen, Phone, MessageCircle, Download, TrendingDown, X, AlertTriangle } from 'lucide-react';
+import { Filter, Calendar, Users, BookOpen, Phone, MessageCircle, Download, TrendingDown, X, AlertTriangle, Search, FileText, Clock } from 'lucide-react';
 import ReportTable from '../components/ReportTable';
 import { APIService } from '../utils/api';
 import { LocalDBService } from '../utils/localdb';
@@ -10,26 +10,32 @@ interface FilterState {
   dateTo: string;
   fieldName: string;
   level: string;
-  reportType: 'daily' | 'weekly' | 'monthly';
+  reportType: 'daily' | 'weekly' | 'monthly' | 'custom';
+  courseTitle: string;
+  studentName: string;
+  matricule: string;
 }
 
 export default function Reports() {
   const [absentees, setAbsentees] = useState<AbsenteeRecord[]>([]);
+  const [allAbsentees, setAllAbsentees] = useState<AbsenteeRecord[]>([]);
   const [filters, setFilters] = useState<FilterState>({
     dateFrom: new Date().toISOString().split('T')[0],
     dateTo: new Date().toISOString().split('T')[0],
     fieldName: '',
     level: '',
     reportType: 'daily',
+    courseTitle: '',
+    studentName: '',
+    matricule: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 
   // Available options for filters
-  const [availableFields] = useState([
-    'Computer Science', 'Software Engineering', 'Information Technology', 'Cybersecurity', 'Data Science'
-  ]);
+  const [availableFields, setAvailableFields] = useState<string[]>([]);
+  const [availableCourses, setAvailableCourses] = useState<string[]>([]);
   const [availableLevels] = useState([
     'Level 100', 'Level 200', 'Level 300', 'Level 400'
   ]);
@@ -38,53 +44,121 @@ export default function Reports() {
     loadAbsenteeReport();
   }, [filters.reportType]);
 
+  useEffect(() => {
+    // Update available options when data changes
+    if (allAbsentees.length > 0) {
+      const fields = [...new Set(allAbsentees.map(record => record.fieldName))];
+      const courses = [...new Set(allAbsentees.map(record => record.courseTitle))];
+      setAvailableFields(fields);
+      setAvailableCourses(courses);
+    }
+  }, [allAbsentees]);
+
   const loadAbsenteeReport = async () => {
     setLoading(true);
     setError(null);
   
     try {
-      // First try to get data from API
+      console.log('Loading absentee report with filters:', filters);
+      
       let reportData: AbsenteeRecord[] = [];
       
       try {
+        // Try to get data from API first
         const filterParams = {
           date_from: filters.dateFrom,
           date_to: filters.dateTo,
           report_type: filters.reportType,
           ...(filters.fieldName && { field: filters.fieldName }),
           ...(filters.level && { level: filters.level }),
+          ...(filters.courseTitle && { course: filters.courseTitle }),
+          ...(filters.studentName && { student_name: filters.studentName }),
+          ...(filters.matricule && { matricule: filters.matricule }),
         };
 
         reportData = await APIService.getAbsenteeReport(filterParams);
+        console.log('API report data:', reportData);
       } catch (apiError) {
         console.log('API failed, checking local data...');
         
         // Fallback to local absentee records from rollcall submissions
         const localAbsentees = LocalDBService.getCachedData('rollcall_absentee_records') || [];
+        console.log('Local absentee records:', localAbsentees);
         reportData = localAbsentees;
       }
 
-      // Apply filters to the data
-      let filteredData = reportData;
+      // Store all data for filtering
+      setAllAbsentees(reportData);
 
+      // Apply client-side filters
+      let filteredData = [...reportData];
+
+      // Apply date filters
+      if (filters.reportType === 'custom' || filters.dateFrom || filters.dateTo) {
+        const fromDate = new Date(filters.dateFrom);
+        const toDate = new Date(filters.dateTo);
+        toDate.setHours(23, 59, 59, 999); // Include the entire end date
+
+        filteredData = filteredData.filter(record => {
+          const recordDate = new Date(record.date);
+          return recordDate >= fromDate && recordDate <= toDate;
+        });
+      } else {
+        // Apply report type filters
+        const today = new Date();
+        const startOfWeek = new Date(today.setDate(today.getDate() - today.getDay()));
+        const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+
+        switch (filters.reportType) {
+          case 'daily':
+            const todayStr = new Date().toISOString().split('T')[0];
+            filteredData = filteredData.filter(record => 
+              record.date.split('T')[0] === todayStr
+            );
+            break;
+          case 'weekly':
+            filteredData = filteredData.filter(record => 
+              new Date(record.date) >= startOfWeek
+            );
+            break;
+          case 'monthly':
+            filteredData = filteredData.filter(record => 
+              new Date(record.date) >= startOfMonth
+            );
+            break;
+        }
+      }
+
+      // Apply other filters
       if (filters.fieldName) {
-        filteredData = filteredData.filter(record => record.fieldName === filters.fieldName);
+        filteredData = filteredData.filter(record => 
+          record.fieldName.toLowerCase().includes(filters.fieldName.toLowerCase())
+        );
       }
 
       if (filters.level) {
         filteredData = filteredData.filter(record => record.level === filters.level);
       }
 
-      // Apply date filters
-      const fromDate = new Date(filters.dateFrom);
-      const toDate = new Date(filters.dateTo);
-      toDate.setHours(23, 59, 59, 999); // Include the entire end date
+      if (filters.courseTitle) {
+        filteredData = filteredData.filter(record => 
+          record.courseTitle.toLowerCase().includes(filters.courseTitle.toLowerCase())
+        );
+      }
 
-      filteredData = filteredData.filter(record => {
-        const recordDate = new Date(record.date);
-        return recordDate >= fromDate && recordDate <= toDate;
-      });
+      if (filters.studentName) {
+        filteredData = filteredData.filter(record => 
+          record.studentName.toLowerCase().includes(filters.studentName.toLowerCase())
+        );
+      }
 
+      if (filters.matricule) {
+        filteredData = filteredData.filter(record => 
+          record.matricule.toLowerCase().includes(filters.matricule.toLowerCase())
+        );
+      }
+
+      console.log('Filtered data:', filteredData);
       setAbsentees(filteredData);
       
       if (filteredData.length > 0) {
@@ -116,6 +190,9 @@ export default function Reports() {
       fieldName: '',
       level: '',
       reportType: 'daily',
+      courseTitle: '',
+      studentName: '',
+      matricule: '',
     });
   };
 
@@ -162,6 +239,8 @@ export default function Reports() {
         return 'Weekly Absentee Report';
       case 'monthly':
         return 'Monthly Absentee Report';
+      case 'custom':
+        return 'Custom Absentee Report';
       default:
         return 'Absentee Report';
     }
@@ -175,6 +254,8 @@ export default function Reports() {
         return 'This week\'s absentees';
       case 'monthly':
         return 'This month\'s absentees';
+      case 'custom':
+        return `Custom period: ${filters.dateFrom} to ${filters.dateTo}`;
       default:
         return 'Student absentee records';
     }
@@ -217,7 +298,7 @@ export default function Reports() {
             className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
             <Filter className="w-4 h-4" />
-            <span>Filters</span>
+            <span>Advanced Filters</span>
           </button>
           
           {absentees.length > 0 && (
@@ -226,7 +307,7 @@ export default function Reports() {
               className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
             >
               <Download className="w-4 h-4" />
-              <span>Export</span>
+              <span>Export CSV</span>
             </button>
           )}
         </div>
@@ -238,11 +319,12 @@ export default function Reports() {
           {[
             { key: 'daily', label: 'Daily', icon: Calendar },
             { key: 'weekly', label: 'Weekly', icon: TrendingDown },
-            { key: 'monthly', label: 'Monthly', icon: BookOpen }
+            { key: 'monthly', label: 'Monthly', icon: BookOpen },
+            { key: 'custom', label: 'Custom', icon: Clock }
           ].map(({ key, label, icon: Icon }) => (
             <button
               key={key}
-              onClick={() => handleFilterChange('reportType', key as 'daily' | 'weekly' | 'monthly')}
+              onClick={() => handleFilterChange('reportType', key as 'daily' | 'weekly' | 'monthly' | 'custom')}
               className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
                 filters.reportType === key
                   ? 'bg-blue-600 text-white'
@@ -253,6 +335,41 @@ export default function Reports() {
               <span>{label}</span>
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* Quick Search */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm border border-gray-200 dark:border-gray-700">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <input
+              type="text"
+              placeholder="Search by student name..."
+              value={filters.studentName}
+              onChange={(e) => handleFilterChange('studentName', e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+            />
+          </div>
+          
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <input
+              type="text"
+              placeholder="Search by matricule..."
+              value={filters.matricule}
+              onChange={(e) => handleFilterChange('matricule', e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+            />
+          </div>
+          
+          <button
+            onClick={handleApplyFilters}
+            disabled={loading}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
+          >
+            {loading ? 'Searching...' : 'Search'}
+          </button>
         </div>
       </div>
 
@@ -315,13 +432,13 @@ export default function Reports() {
         </div>
       )}
 
-      {/* Filters Modal */}
+      {/* Advanced Filters Modal */}
       {showFilters && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
               <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-                Filter Reports
+                Advanced Filter Options
               </h3>
               <button
                 onClick={() => setShowFilters(false)}
@@ -332,34 +449,37 @@ export default function Reports() {
             </div>
             
             <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Date From */}
-                <div>
-                  <label className="flex items-center space-x-2 text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    <Calendar className="w-4 h-4" />
-                    <span>From Date</span>
-                  </label>
-                  <input
-                    type="date"
-                    value={filters.dateFrom}
-                    onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                  />
-                </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* Date Range - Only show for custom report type */}
+                {filters.reportType === 'custom' && (
+                  <>
+                    <div>
+                      <label className="flex items-center space-x-2 text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        <Calendar className="w-4 h-4" />
+                        <span>From Date</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={filters.dateFrom}
+                        onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                      />
+                    </div>
 
-                {/* Date To */}
-                <div>
-                  <label className="flex items-center space-x-2 text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    <Calendar className="w-4 h-4" />
-                    <span>To Date</span>
-                  </label>
-                  <input
-                    type="date"
-                    value={filters.dateTo}
-                    onChange={(e) => handleFilterChange('dateTo', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                  />
-                </div>
+                    <div>
+                      <label className="flex items-center space-x-2 text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        <Calendar className="w-4 h-4" />
+                        <span>To Date</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={filters.dateTo}
+                        onChange={(e) => handleFilterChange('dateTo', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                      />
+                    </div>
+                  </>
+                )}
 
                 {/* Field */}
                 <div>
@@ -400,6 +520,26 @@ export default function Reports() {
                     ))}
                   </select>
                 </div>
+
+                {/* Course */}
+                <div>
+                  <label className="flex items-center space-x-2 text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    <FileText className="w-4 h-4" />
+                    <span>Course</span>
+                  </label>
+                  <select
+                    value={filters.courseTitle}
+                    onChange={(e) => handleFilterChange('courseTitle', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                  >
+                    <option value="">All Courses</option>
+                    {availableCourses.map(course => (
+                      <option key={course} value={course}>
+                        {course}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="flex items-center space-x-4 mt-6">
@@ -414,7 +554,7 @@ export default function Reports() {
                   onClick={handleResetFilters}
                   className="px-6 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
                 >
-                  Reset
+                  Reset All
                 </button>
               </div>
             </div>

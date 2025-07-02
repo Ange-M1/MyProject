@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, CheckCircle, Clock, Users, MapPin, Phone, MessageCircle, Filter, Eye, Calendar, BookOpen, X, Ban, ArrowRight } from 'lucide-react';
+import { AlertCircle, CheckCircle, Clock, Users, MapPin, Phone, MessageCircle, Filter, Eye, Calendar, BookOpen, X, Ban, ArrowRight, RefreshCw } from 'lucide-react';
 import { APIService } from '../utils/api';
 import { LocalDBService } from '../utils/localdb';
 import { SyncService } from '../utils/sync';
@@ -19,6 +19,7 @@ export default function Rollcall() {
   const [selectedField, setSelectedField] = useState<string>('');
   const [showFilters, setShowFilters] = useState(false);
   const [selectedAbsenteeGroup, setSelectedAbsenteeGroup] = useState<any>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     loadAvailableSessions();
@@ -30,8 +31,15 @@ export default function Rollcall() {
       setLoading(true);
       setError(null);
 
+      console.log('Loading available sessions...');
       const sessionData = await APIService.getCurrentSessions();
+      console.log('Loaded sessions:', sessionData);
+      
       setAvailableSessions(sessionData || []);
+
+      if (!sessionData || sessionData.length === 0) {
+        setError('No active sessions found. Sessions are generated from the timetable for the current day and time.');
+      }
 
     } catch (error) {
       console.error('Failed to load available sessions:', error);
@@ -39,6 +47,12 @@ export default function Rollcall() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRefreshSessions = async () => {
+    setRefreshing(true);
+    await loadAvailableSessions();
+    setRefreshing(false);
   };
 
   const loadCompletedSessions = () => {
@@ -112,35 +126,56 @@ IME Discipline Master`;
     setError(null);
 
     try {
-      // Submit attendance records
-      if (navigator.onLine) {
+      console.log('Submitting attendance for session:', selectedSession.id);
+      console.log('Attendance records:', attendanceRecords);
+
+      // Submit each attendance record individually for better error handling
+      const submissionPromises = attendanceRecords.map(async (record) => {
+        const submissionData = {
+          session_id: record.sessionId,
+          student_id: record.studentId,
+          student_matricule: students.find(s => s.id === record.studentId)?.matricule,
+          is_present: record.isPresent ? 1 : 0,
+          timestamp: record.timestamp,
+          course_title: selectedSession.courseTitle,
+          course_code: selectedSession.courseCode,
+          field_name: selectedSession.fieldName,
+          level: selectedSession.level,
+          room: selectedSession.room,
+          lecturer: selectedSession.lecturer
+        };
+
+        console.log('Submitting individual record:', submissionData);
+        
         try {
-          for (const record of attendanceRecords) {
-            await APIService.submitAttendance({
-              session_id: record.sessionId,
-              student_id: record.studentId,
-              is_present: record.isPresent,
-              timestamp: record.timestamp,
-            });
-          }
-          setSuccessMessage('Attendance submitted successfully!');
-        } catch (apiError) {
-          attendanceRecords.forEach(record => {
-            LocalDBService.saveAttendanceToQueue(record);
-          });
-          setSuccessMessage('Attendance saved offline. Will sync when connection is restored.');
-        }
-      } else {
-        attendanceRecords.forEach(record => {
+          const result = await APIService.submitAttendance(submissionData);
+          console.log('Submission result:', result);
+          return { success: true, record };
+        } catch (error) {
+          console.error('Failed to submit record:', error);
+          // Save to local queue for later sync
           LocalDBService.saveAttendanceToQueue(record);
-        });
+          return { success: false, record, error };
+        }
+      });
+
+      const results = await Promise.all(submissionPromises);
+      const successCount = results.filter(r => r.success).length;
+      const failedCount = results.filter(r => !r.success).length;
+
+      if (successCount > 0) {
+        setSuccessMessage(
+          `Attendance submitted successfully for ${successCount} students!` +
+          (failedCount > 0 ? ` ${failedCount} records saved offline for later sync.` : '')
+        );
+      } else {
         setSuccessMessage('Attendance saved offline. Will sync when connection is restored.');
       }
 
       // Generate absentee list
       const absentStudents = students.filter(student => student.isPresent === false);
       const absenteeRecords: AbsenteeRecord[] = absentStudents.map(student => ({
-        id: `${selectedSession.id}-${student.id}`,
+        id: `${selectedSession.id}-${student.id}-${Date.now()}`,
         studentName: student.name,
         matricule: student.matricule,
         fieldName: student.field,
@@ -159,6 +194,7 @@ IME Discipline Master`;
         const existingAbsentees = LocalDBService.getCachedData('rollcall_absentee_records') || [];
         const updatedAbsentees = [...existingAbsentees, ...absenteeRecords];
         LocalDBService.cacheData('rollcall_absentee_records', updatedAbsentees);
+        console.log('Saved absentee records:', absenteeRecords);
       }
 
       setAbsentees(absenteeRecords);
@@ -276,17 +312,27 @@ IME Discipline Master`;
       <div className="text-center py-12">
         <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
         <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-          Unable to Load Sessions
+          No Active Sessions
         </h2>
         <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-md mx-auto">
           {error}
         </p>
-        <button
-          onClick={loadAvailableSessions}
-          className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          Try Again
-        </button>
+        <div className="flex items-center justify-center space-x-4">
+          <button
+            onClick={handleRefreshSessions}
+            disabled={refreshing}
+            className="flex items-center space-x-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            <span>{refreshing ? 'Refreshing...' : 'Refresh Sessions'}</span>
+          </button>
+          <button
+            onClick={() => window.location.href = '/timetable'}
+            className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+          >
+            Manage Timetable
+          </button>
+        </div>
       </div>
     );
   }
@@ -485,13 +531,26 @@ IME Discipline Master`;
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-          Rollcall Management
-        </h1>
-        <p className="text-gray-500 dark:text-gray-400 mt-1">
-          Select a session to take attendance (one-time per field per session)
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            Rollcall Management
+          </h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">
+            Select a session to take attendance (one-time per field per session)
+          </p>
+        </div>
+        
+        {!selectedSession && (
+          <button
+            onClick={handleRefreshSessions}
+            disabled={refreshing}
+            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            <span>{refreshing ? 'Refreshing...' : 'Refresh Sessions'}</span>
+          </button>
+        )}
       </div>
 
       {/* Success/Error Messages */}
@@ -556,6 +615,9 @@ IME Discipline Master`;
                   ? `No active sessions for ${selectedField} at this time.`
                   : 'No active sessions at this time.'
                 }
+              </p>
+              <p className="text-sm text-gray-400 mt-2">
+                Sessions are automatically generated from your timetable based on the current day and time.
               </p>
             </div>
           ) : (
