@@ -80,8 +80,8 @@ export class APIService {
       const currentTime = today.getHours() * 60 + today.getMinutes();
 
       const sessions = timetable
-        .filter(entry => entry.day === currentDay)
-        .map(entry => {
+        .filter((entry: any) => entry.day === currentDay)
+        .map((entry: any) => {
           const [startTime, endTime] = entry.timeSlot.split(' - ');
           const startMinutes = this.timeToMinutes(startTime);
           const endMinutes = this.timeToMinutes(endTime);
@@ -91,14 +91,14 @@ export class APIService {
 
           if (!isCurrentOrUpcoming) return null;
 
-          const fieldStudents = students.filter(student => 
+          const fieldStudents = students.filter((student: any) => 
             student.field === entry.field && student.level === entry.level
           );
 
           return {
             id: `${entry.field}-${entry.level}-${entry.day}-${entry.timeSlot}`.replace(/\s+/g, '-'),
             courseTitle: entry.course,
-            courseCode: entry.course.split(' ').map(word => word.charAt(0)).join('').toUpperCase(),
+            courseCode: entry.course.split(' ').map((word: string) => word.charAt(0)).join('').toUpperCase(),
             fieldName: entry.field,
             level: entry.level,
             room: entry.room,
@@ -109,7 +109,7 @@ export class APIService {
             students: fieldStudents
           };
         })
-        .filter(session => session !== null);
+        .filter((session: any) => session !== null);
 
       console.log(`Generated ${sessions.length} sessions for ${currentDay}`);
       return sessions;
@@ -122,68 +122,6 @@ export class APIService {
   private static timeToMinutes(timeStr: string): number {
     const [hours, minutes] = timeStr.split(':').map(Number);
     return hours * 60 + minutes;
-  }
-
-  static async getTimetable() {
-    try {
-      const response = await this.fetchWithTimeout(`${API_BASE_URL}/get_timetable.php`);
-      return await this.handleResponse(response);
-    } catch (error) {
-      console.error('Failed to load timetable from API:', error);
-      // Return demo data as fallback
-      return [
-        {
-          id: '1',
-          day: 'Monday',
-          timeSlot: '08:00 - 10:00',
-          course: 'Database Systems',
-          field: 'Computer Science',
-          level: 'Level 200',
-          room: 'Lab 101',
-          lecturer: 'Dr. Smith'
-        },
-        {
-          id: '2',
-          day: 'Monday',
-          timeSlot: '10:00 - 12:00',
-          course: 'Programming Fundamentals',
-          field: 'Computer Science',
-          level: 'Level 100',
-          room: 'Room 205',
-          lecturer: 'Prof. Wilson'
-        },
-        {
-          id: '3',
-          day: 'Tuesday',
-          timeSlot: '08:00 - 10:00',
-          course: 'Software Engineering Principles',
-          field: 'Software Engineering',
-          level: 'Level 200',
-          room: 'Room 103',
-          lecturer: 'Dr. Johnson'
-        },
-        {
-          id: '4',
-          day: 'Tuesday',
-          timeSlot: '14:00 - 16:00',
-          course: 'Web Development Basics',
-          field: 'Information Technology',
-          level: 'Level 100',
-          room: 'Lab 201',
-          lecturer: 'Ms. Davis'
-        },
-        {
-          id: '5',
-          day: 'Wednesday',
-          timeSlot: '10:00 - 12:00',
-          course: 'Network Fundamentals',
-          field: 'Cybersecurity',
-          level: 'Level 200',
-          room: 'Room 301',
-          lecturer: 'Prof. Brown'
-        }
-      ];
-    }
   }
 
   // Direct attendance submission to database
@@ -261,6 +199,68 @@ export class APIService {
     } catch (error) {
       console.error('Failed to fetch dashboard stats:', error);
       throw error;
+    }
+  }
+
+  static async getTimetable() {
+    try {
+      const response = await this.fetchWithTimeout(`${API_BASE_URL}/get_timetable.php`);
+      return await this.handleResponse(response);
+    } catch (error) {
+      console.error('Failed to load timetable from API:', error);
+      // Return demo data as fallback
+      return [
+        {
+          id: '1',
+          day: 'Monday',
+          timeSlot: '08:00 - 10:00',
+          course: 'Database Systems',
+          field: 'Computer Science',
+          level: 'Level 200',
+          room: 'Lab 101',
+          lecturer: 'Dr. Smith'
+        },
+        {
+          id: '2',
+          day: 'Monday',
+          timeSlot: '10:00 - 12:00',
+          course: 'Programming Fundamentals',
+          field: 'Computer Science',
+          level: 'Level 100',
+          room: 'Room 205',
+          lecturer: 'Prof. Wilson'
+        },
+        {
+          id: '3',
+          day: 'Tuesday',
+          timeSlot: '08:00 - 10:00',
+          course: 'Software Engineering Principles',
+          field: 'Software Engineering',
+          level: 'Level 200',
+          room: 'Room 103',
+          lecturer: 'Dr. Johnson'
+        },
+        {
+          id: '4',
+          day: 'Tuesday',
+          timeSlot: '14:00 - 16:00',
+          course: 'Web Development Basics',
+          field: 'Information Technology',
+          level: 'Level 100',
+          room: 'Lab 201',
+          lecturer: 'Ms. Davis'
+        },
+        {
+          id: '5',
+          day: 'Wednesday',
+          timeSlot: '10:00 - 12:00',
+          course: 'Network Fundamentals',
+          field: 'Cybersecurity',
+          level: 'Level 200',
+          room: 'Room 301',
+          lecturer: 'Prof. Brown'
+        }
+      ];
     }
   }
 
