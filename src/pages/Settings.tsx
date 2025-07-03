@@ -36,7 +36,7 @@ export default function Settings() {
         </p>
       </div>
 
-      {/* Sync Status - Disabled */}
+      {/* Database Status */}
       <div className="bg-white rounded-lg p-6 shadow-sm border-2 border-black">
         <h3 className="text-lg font-medium text-black mb-4">
           Database Connection
