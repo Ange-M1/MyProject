@@ -1,14 +1,11 @@
-import type { AttendanceRecord, SyncStatus } from '../types';
+import type { SyncStatus } from '../types';
 
 export class LocalDBService {
   private static readonly STORAGE_KEYS = {
-    SYNC_STATUS: 'rollcall_sync_status',
     THEME: 'rollcall_theme',
-    CACHE_SESSION: 'rollcall_cached_session',
-    CACHE_TIMETABLE: 'rollcall_cached_timetable',
   } as const;
 
-  // Sync Status Management (disabled but kept for compatibility)
+  // Disabled sync status (no longer used)
   static getSyncStatus(): SyncStatus {
     return {
       lastSync: new Date().toISOString(),
@@ -19,8 +16,8 @@ export class LocalDBService {
   }
 
   static updateSyncStatus(updates: Partial<SyncStatus>): void {
-    // Disabled - no longer using sync functionality
-    console.log('Sync status update (disabled):', updates);
+    // Disabled - no sync functionality
+    console.log('Sync disabled - no status updates');
   }
 
   // Theme Management
@@ -85,22 +82,5 @@ export class LocalDBService {
     } catch (error) {
       console.error('LocalDB Error - clearCache:', error);
     }
-  }
-
-  // Disabled attendance queue methods (kept for compatibility)
-  static saveAttendanceToQueue(record: AttendanceRecord): void {
-    console.log('Attendance queue disabled - record would be queued:', record);
-  }
-
-  static getAttendanceQueue(): AttendanceRecord[] {
-    return [];
-  }
-
-  static clearAttendanceQueue(): void {
-    console.log('Attendance queue cleared (disabled)');
-  }
-
-  static removeFromQueue(recordId: string): void {
-    console.log('Remove from queue (disabled):', recordId);
   }
 }

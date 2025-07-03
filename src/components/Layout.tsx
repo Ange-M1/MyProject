@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
-import { Menu, Wifi, WifiOff, User, LogOut, ClipboardList } from 'lucide-react';
+import { Menu, User, LogOut, ClipboardList } from 'lucide-react';
 import Sidebar from './Sidebar';
 import ProfileModal from './ProfileModal';
-import { useSyncStatus } from '../hooks/useSyncStatus';
 
 interface User {
   id: string;
@@ -20,10 +19,6 @@ interface LayoutProps {
 export default function Layout({ user, onLogout }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
-  const syncStatus = useSyncStatus();
-  const navItems = [
-    { path: '/rollcall', label: 'Rollcall', icon: ClipboardList },
-  ];
 
   const handleLogout = () => {
     if (confirm('Are you sure you want to logout?')) {
@@ -58,29 +53,20 @@ export default function Layout({ user, onLogout }: LayoutProps) {
 
               {/* Page title */}
               <div className="flex items-center space-x-4">
-              
                 <ClipboardList className="w-6 h-6 text-blue-600" />
-              <div className="hidden lg:block">
-                <h1 className="text-xl font-semibold text-black">
-                  IME Rollcall System
-                </h1>
-              </div>
+                <div className="hidden lg:block">
+                  <h1 className="text-xl font-semibold text-black">
+                    IME Rollcall System
+                  </h1>
+                </div>
               </div>
 
               {/* Right side actions */}
               <div className="flex items-center space-x-4">
-                {/* Online Status */}
+                {/* Database Status */}
                 <div className="flex items-center space-x-2">
-                  {syncStatus.isOnline ? (
-                    <Wifi className="w-5 h-5 text-blue-600" />
-                  ) : (
-                    <WifiOff className="w-5 h-5 text-red-600" />
-                  )}
-                  {syncStatus.pendingCount > 0 && (
-                    <span className="bg-red-600 text-white text-xs font-medium px-2.5 py-0.5 rounded-full">
-                      {syncStatus.pendingCount} pending
-                    </span>
-                  )}
+                  <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                  <span className="text-sm text-gray-600 hidden sm:block">Database Connected</span>
                 </div>
 
                 {/* Profile & Logout */}

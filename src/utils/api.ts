@@ -186,10 +186,10 @@ export class APIService {
     }
   }
 
-  // Enhanced attendance submission with better error handling
+  // Direct attendance submission to database
   static async submitAttendance(attendanceData: any) {
     try {
-      console.log('Submitting attendance:', attendanceData);
+      console.log('Submitting attendance directly to database:', attendanceData);
       
       const response = await this.fetchWithTimeout(`${API_BASE_URL}/submit_attendance.php`, {
         method: 'POST',
@@ -197,10 +197,10 @@ export class APIService {
       });
       
       const result = await this.handleResponse(response);
-      console.log('Attendance submission result:', result);
+      console.log('Direct attendance submission result:', result);
       return result;
     } catch (error) {
-      console.error('Failed to submit attendance:', error);
+      console.error('Failed to submit attendance to database:', error);
       throw error;
     }
   }
@@ -229,6 +229,22 @@ export class APIService {
     } catch (error) {
       console.error('Failed to fetch absentee report:', error);
       throw error;
+    }
+  }
+
+  // Get student absentee hours from database
+  static async getStudentAbsenteeHours() {
+    try {
+      console.log('Fetching student absentee hours from database...');
+      
+      const response = await this.fetchWithTimeout(`${API_BASE_URL}/get_student_absentee_hours.php`);
+      const data = await this.handleResponse(response);
+      
+      console.log('Student absentee hours data:', data);
+      return data || [];
+    } catch (error) {
+      console.error('Failed to fetch student absentee hours:', error);
+      return [];
     }
   }
 
@@ -326,17 +342,6 @@ export class APIService {
         { id: '4', name: 'Cybersecurity', code: 'CYB', totalStudents: 180, levels: ['Level 100', 'Level 200'] },
         { id: '5', name: 'Data Science', code: 'DS', totalStudents: 220, levels: ['Level 100', 'Level 200'] }
       ];
-    }
-  }
-
-  // NEW METHOD: Get student absentee hours from database
-  static async getStudentAbsenteeHours() {
-    try {
-      const response = await this.fetchWithTimeout(`${API_BASE_URL}/get_student_absentee_hours.php`);
-      return await this.handleResponse(response) || [];
-    } catch (error) {
-      console.error('Failed to fetch student absentee hours:', error);
-      return [];
     }
   }
 

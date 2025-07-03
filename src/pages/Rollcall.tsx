@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AlertCircle, CheckCircle, Clock, Users, MapPin, Phone, MessageCircle, Filter, Eye, Calendar, BookOpen, X, Ban, ArrowRight, RefreshCw } from 'lucide-react';
 import { APIService } from '../utils/api';
 import { LocalDBService } from '../utils/localdb';
-import type { Session, Student, AttendanceRecord, AbsenteeRecord } from '../types';
+import type { Session, Student, AbsenteeRecord } from '../types';
 
 export default function Rollcall() {
   const [availableSessions, setAvailableSessions] = useState<Session[]>([]);
@@ -16,7 +16,6 @@ export default function Rollcall() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [selectedField, setSelectedField] = useState<string>('');
-  const [showFilters, setShowFilters] = useState(false);
   const [selectedAbsenteeGroup, setSelectedAbsenteeGroup] = useState<any>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -113,7 +112,6 @@ IME Discipline Master`;
         studentId: student.id,
         isPresent: student.isPresent!,
         timestamp: new Date().toISOString(),
-        synced: true, // Mark as synced since we're saving directly
       }));
 
     if (attendanceRecords.length === 0) {
@@ -152,29 +150,29 @@ IME Discipline Master`;
           date: new Date().toISOString().split('T')[0]
         };
 
-        console.log('Submitting individual record:', submissionData);
+        console.log('Submitting individual record to database:', submissionData);
         
         try {
           const result = await APIService.submitAttendance(submissionData);
-          console.log('Submission result:', result);
+          console.log('Database submission result:', result);
           successCount++;
         } catch (error) {
-          console.error('Failed to submit record for student:', student.name, error);
+          console.error('Failed to submit record to database for student:', student.name, error);
           failedCount++;
         }
       }
 
       if (successCount > 0) {
         setSuccessMessage(
-          `Attendance submitted successfully for ${successCount} students!` +
-          (failedCount > 0 ? ` ${failedCount} records failed to submit.` : '')
+          `Attendance saved to database successfully for ${successCount} students!` +
+          (failedCount > 0 ? ` ${failedCount} records failed to save.` : '')
         );
       } else {
-        setError('Failed to submit attendance records. Please try again.');
+        setError('Failed to save attendance records to database. Please try again.');
         return;
       }
 
-      // Generate absentee list
+      // Generate absentee list for local display
       const absentStudents = students.filter(student => student.isPresent === false);
       const absenteeRecords: AbsenteeRecord[] = absentStudents.map(student => ({
         id: `${selectedSession.id}-${student.id}-${Date.now()}`,
@@ -191,12 +189,12 @@ IME Discipline Master`;
         sessionId: selectedSession.id,
       }));
 
-      // Save absentees to reports (for local reporting)
+      // Save absentees for local reporting
       if (absenteeRecords.length > 0) {
         const existingAbsentees = LocalDBService.getCachedData('rollcall_absentee_records') || [];
         const updatedAbsentees = [...existingAbsentees, ...absenteeRecords];
         LocalDBService.cacheData('rollcall_absentee_records', updatedAbsentees);
-        console.log('Saved absentee records:', absenteeRecords);
+        console.log('Saved absentee records for local reporting:', absenteeRecords);
       }
 
       setAbsentees(absenteeRecords);
@@ -222,8 +220,8 @@ IME Discipline Master`;
       setTimeout(() => setSuccessMessage(null), 5000);
 
     } catch (error) {
-      console.error('Failed to submit attendance:', error);
-      setError('Failed to submit attendance. Please try again.');
+      console.error('Failed to submit attendance to database:', error);
+      setError('Failed to save attendance to database. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -539,7 +537,7 @@ IME Discipline Master`;
             Rollcall Management
           </h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">
-            Select a session to take attendance (one-time per field per session)
+            Select a session to take attendance - data saves directly to database
           </p>
         </div>
         
@@ -809,8 +807,8 @@ IME Discipline Master`;
               {submitting && <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>}
               <span>
                 {submitting 
-                  ? 'Submitting...' 
-                  : `Submit Attendance (${markedCount}/${students.length})`
+                  ? 'Saving to Database...' 
+                  : `Save to Database (${markedCount}/${students.length})`
                 }
               </span>
             </button>
